@@ -21,17 +21,6 @@ Size2i screen_size;
 
 ClientSettings client_settings;
 
-#define ID_IP_EDIT 1001
-#define ID_PORT_CONTROLS_EDIT 1002
-#define ID_PORT_IMAGE_EDIT 1003
-
-#define ID_CREATE_BTN 2001
-#define ID_START_BTN 2002
-#define ID_STOP_BTN 2003
-
-#define ID_STATE_STATIC 3001
-
-
 struct sockaddr_in server_addr_controls, client_addr_controls, server_addr_image, client_addr_image;
 SOCKET server_socket_controls, server_socket_image, client_socket_controls, client_socket_image;
 
