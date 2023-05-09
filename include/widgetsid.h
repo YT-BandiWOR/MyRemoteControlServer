@@ -1,0 +1,11 @@
+#pragma once
+
+#define ID_IP_EDIT 1001
+#define ID_PORT_CONTROLS_EDIT 1002
+#define ID_PORT_IMAGE_EDIT 1003
+
+#define ID_CREATE_BTN 2001
+#define ID_START_BTN 2002
+#define ID_STOP_BTN 2003
+
+#define ID_STATE_STATIC 3001
