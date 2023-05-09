@@ -314,7 +314,9 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
+            MessageBox(hWnd, L"отправлено", L"", 0);
             free(imageData);
+            return 0;
         }
         break;
         }

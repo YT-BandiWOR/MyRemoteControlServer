@@ -311,8 +311,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            MessageBox(hWnd, L"передано", L"", 0);
-
+            MessageBox(hWnd, L"получено", L"", 0);
+            free(buffer);
             return 0;
         }
         break;
