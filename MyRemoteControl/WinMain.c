@@ -278,7 +278,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            MessageBox(hWnd, L"Соединение установлено.", L"Подключение клиента", MB_OK);
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
             EnableDlgItem(hWnd, ID_START_BTN, TRUE);
             SetDlgItemText(hWnd, ID_STATE_STATIC, L"Соединено");
@@ -299,8 +298,21 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            WCHAR text[25];
-            wsprintf(text, L"%d", buffer_size);
+            BYTE* buffer = (BYTE*)malloc(buffer_size);
+
+            if (MySocketMessageIfError(hWnd,
+                    RecvMySocketPartial(&client_videostream_socket, buffer, buffer_size, 0)
+                ))
+            {
+                free(buffer);
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            MessageBox(hWnd, L"передано", L"", 0);
+
             return 0;
         }
         break;

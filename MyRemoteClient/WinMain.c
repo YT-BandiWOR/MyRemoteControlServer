@@ -261,7 +261,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            MessageBox(hWnd, L"Соединение установлено.", L"Подключение к серверу", MB_OK);
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
             EnableDlgItem(hWnd, ID_START_BTN, TRUE);
             SetDlgItemText(hWnd, ID_STATE_STATIC, L"Соединено");
@@ -290,10 +289,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
             GetBitmapBits(hBitmap, imageSize, imageData);
 
-            WCHAR text[100];
-            wsprintf(text, L"размер в байтах %d", imageSize);
-            MessageBox(hWnd, text, L"", MB_OK);
-
             int bytes_sent = 0;
 
             int sended_size_size;
@@ -304,6 +299,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 CloseMySocket(&client_controls_socket);
                 CloseMySocket(&client_videostream_socket);
                 EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                free(imageData);
                 return 0;
             }
 
@@ -311,6 +307,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     SendMySocketPartial(&client_videostream_socket, imageData, imageSize, 0)
                 ))
             {
+                free(imageData);
                 CloseMySocket(&client_controls_socket);
                 CloseMySocket(&client_videostream_socket);
                 EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
