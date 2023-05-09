@@ -138,10 +138,6 @@
       <Project>{565b1cab-0112-487e-9c6f-f98742cd2152}</Project>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="tools.h" />
-    <ClInclude Include="types.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

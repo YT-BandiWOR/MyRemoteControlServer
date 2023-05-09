@@ -18,13 +18,5 @@
     <ClCompile Include="WinMain.c">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
-    <ClCompile Include="tools.h">
-      <Filter>Файлы заголовков</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="types.h">
-      <Filter>Файлы заголовков</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>
