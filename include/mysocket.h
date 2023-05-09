@@ -93,8 +93,8 @@ MySocketError RecvMySocket(MySocket* connected_socket, LPSTR buffer, int buffer_
 	}
 }
 
-MySocketError SendMySocket(MySocket* connected_socket, LPSTR buffer, int buffer_size, int* send_size, int flags) {
-	*send_size = send(connected_socket->socket, buffer, buffer_size, flags);
+MySocketError SendMySocket(MySocket* client_socket, LPSTR buffer, int buffer_size, int* send_size, int flags) {
+	*send_size = send(client_socket->socket, buffer, buffer_size, flags);
 
 	if (*send_size >= 0)
 		return MYSOCKER_OK;
@@ -103,6 +103,40 @@ MySocketError SendMySocket(MySocket* connected_socket, LPSTR buffer, int buffer_
 		*send_size = 0;
 		return WSAGetLastError();
 	}
+}
+
+MySocketError SendMySocketPartial(MySocket* client_socket, LPSTR buffer, int buffer_size, int flags) {
+	int bytes_sent = 0;
+	
+	while (bytes_sent <= buffer_size)
+	{
+		int part_send_size = send(client_socket->socket, buffer+bytes_sent, 1024, flags);
+
+		if (part_send_size < 0)
+			return WSAGetLastError();
+
+		bytes_sent += part_send_size;
+	}
+
+	return MYSOCKER_OK;
+}
+
+MySocketError RecvMySocketPartial(MySocket* client_socket, LPSTR buffer, int buffer_size, int flags) {
+	int bytes_recived = 0;
+
+	while (bytes_recived <= buffer_size)
+	{
+		int part_recv_size = send(client_socket->socket, buffer + bytes_recived, 1024, flags);
+
+		if (part_recv_size <= 0)
+		{
+			return WSAGetLastError();
+		}
+
+		bytes_recived += part_recv_size;
+	}
+
+	return MYSOCKER_OK;
 }
 
 MySocketError CloseMySocket(MySocket* my_sock) {

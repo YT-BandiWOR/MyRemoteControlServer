@@ -286,11 +286,22 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         break;
         case ID_START_BTN:
         {
-            MySocketError err_code;
+            int buffer_size;
+            int recvid;
 
-           
+            if (MySocketMessageIfError(hWnd, 
+                    RecvMySocket(&client_videostream_socket, &buffer_size, sizeof(buffer_size), &recvid, 0)
+                ))
+            {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
 
-
+            WCHAR text[25];
+            wsprintf(text, L"%d", buffer_size);
+            return 0;
         }
         break;
 

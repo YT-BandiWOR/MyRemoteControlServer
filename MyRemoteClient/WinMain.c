@@ -137,7 +137,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             20, 270, 150, 25,
             hWnd, (HMENU)ID_STOP_BTN, hMainInstance, NULL);
 
-        EnableDlgItem(hWnd, ID_START_BTN, FALSE);
+        //EnableDlgItem(hWnd, ID_START_BTN, FALSE);
         EnableDlgItem(hWnd, ID_STOP_BTN, FALSE);
     }
     break;
@@ -267,9 +267,59 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             SetDlgItemText(hWnd, ID_STATE_STATIC, L"Соединено");
         }
         break;
-        case ID_STOP_BTN:
-            SendMessage(hChildWindow, WM_DESTROY, NULL, NULL);
-            break;
+        case ID_START_BTN:
+        {
+            //ShowWindowAsync(hWnd, SW_MINIMIZE);
+            
+            HDC hdcScreen = GetDC(HWND_DESKTOP);
+            HDC hdcMemDC = CreateCompatibleDC(hdcScreen);
+            HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, screen_size.width, screen_size.height);
+
+            SelectObject(hdcMemDC, hBitmap);
+
+            BitBlt(hdcMemDC, 0, 0, screen_size.width, screen_size.height, hdcScreen, 0, 0, SRCCOPY);
+
+            BITMAP bmp;
+            GetObject(hBitmap, sizeof(BITMAP), &bmp);
+
+            int imageSize = bmp.bmWidth * bmp.bmHeight * bmp.bmBitsPixel / 8;
+
+            BYTE* imageData = (BYTE*) malloc(imageSize);
+            if (imageData == 0)
+                return 0;
+
+            GetBitmapBits(hBitmap, imageSize, imageData);
+
+            WCHAR text[100];
+            wsprintf(text, L"размер в байтах %d", imageSize);
+            MessageBox(hWnd, text, L"", MB_OK);
+
+            int bytes_sent = 0;
+
+            int sended_size_size;
+            if (MySocketMessageIfError(hWnd,
+                    SendMySocket(&client_videostream_socket, &imageSize, sizeof(imageSize), &sended_size_size, 0)
+                ))
+            {
+                CloseMySocket(&client_controls_socket);
+                CloseMySocket(&client_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            if (MySocketMessageIfError(hWnd, 
+                    SendMySocketPartial(&client_videostream_socket, imageData, imageSize, 0)
+                ))
+            {
+                CloseMySocket(&client_controls_socket);
+                CloseMySocket(&client_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            free(imageData);
+        }
+        break;
         }
     }
     break;
@@ -285,12 +335,7 @@ LRESULT SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
-    case WM_CLOSE:
-        //closesocket(client_socket_image);
-        //closesocket(client_socket_controls);
-        //closesocket(server_socket_image);
-        //closesocket(server_socket_controls);
-        break;
+    
 
     default:
         return DefWindowProc(hWnd, msg, wParam, lParam);
