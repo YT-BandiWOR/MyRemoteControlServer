@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <stdint.h>
 #include <remotelib.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -21,8 +22,7 @@ Size2i screen_size;
 
 ClientSettings client_settings;
 
-struct sockaddr_in server_addr_controls, client_addr_controls, server_addr_image, client_addr_image;
-SOCKET server_socket_controls, server_socket_image, client_socket_controls, client_socket_image;
+MySocket server_controls_socket, server_videostream_socket, client_controls_socket, client_videostream_socket;
 
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
@@ -34,43 +34,30 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         return 1;
     }
 
-    // Регистрация класса окна
-    WNDCLASS wc = { 0 };
-    wc.lpfnWndProc = MainWndProc; // Установка функции обработки сообщений
-    wc.hInstance = hInstance;
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.lpszClassName = L"MyWindowClass";
-
-    hMainInstance = hInstance;
-
-    screen_size = GetScreenSize();
-
-    if (!RegisterClass(&wc)) {
+    if (!RegisterServerMainWndClass(hInstance, MainWndProc))
+    {
         MessageBox(NULL, L"Failed to register window class", L"Error", MB_ICONERROR);
         return 1;
     }
 
-    // Создание окна
-    HWND hWnd = CreateWindow(
-        L"MyWindowClass", // Имя класса окна
-        L"MyRemoteControl Server", // Заголовок окна
-        WS_OVERLAPPEDWINDOW, // Стиль окна
-        0, 0, // Позиция окна
-        220, 400, // Размер окна
-        NULL, // Родительское окно
-        NULL, // Нет меню
-        hInstance, // Дескриптор приложения
-        NULL // Дополнительные данные окна
-    );
+    if (!RegisterServerSubClass(hInstance, SubWndProc))
+    {
+        MessageBox(NULL, L"Failed to register window class [video]", L"Error", MB_ICONERROR);
+        return 1;
+    }
 
-    if (hWnd == NULL) {
+
+    HWND hMainWnd = CreateServerMainWindow(0, 0, 220, 400);
+
+    if (hMainWnd == NULL)
+    {
         MessageBox(NULL, L"Failed to create window", L"Error", MB_ICONERROR);
         return 1;
     }
 
     // Отображение окна
-    ShowWindow(hWnd, nCmdShow);
-    UpdateWindow(hWnd);
+    ShowWindow(hMainWnd, nCmdShow);
+    UpdateWindow(hMainWnd);
 
     // Основной цикл обработки сообщений
     MSG msg;
@@ -97,6 +84,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         break;
     case WM_CREATE:
     {
+        screen_size = GetScreenSize();
+
         CreateWindow(
             L"STATIC", L"Введите IP",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
@@ -104,7 +93,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hIpEdit = CreateWindow(L"EDIT", DEFAULT_IP,
+        CreateWindow(L"EDIT", DEFAULT_IP,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 40, 150, 20,
             hWnd, (HMENU)ID_IP_EDIT, hMainInstance, NULL);
@@ -116,7 +105,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hPortControlsEdit = CreateWindow(L"EDIT", DEFAULT_PORT_CONTROLS,
+        CreateWindow(L"EDIT", DEFAULT_PORT_CONTROLS,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 90, 150, 20,
             hWnd, (HMENU)ID_PORT_CONTROLS_EDIT, hMainInstance, NULL);
@@ -128,7 +117,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hPortImageEdit = CreateWindow(L"EDIT", DEFAULT_PORT_IMAGE,
+        CreateWindow(L"EDIT", DEFAULT_PORT_IMAGE,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 150, 150, 20,
             hWnd, (HMENU)ID_PORT_IMAGE_EDIT, hMainInstance, NULL);
@@ -138,25 +127,24 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             20, 180, 150, 25,
             hWnd, (HMENU)ID_CREATE_BTN, NULL, NULL);
 
-        HWND hStateStatic = CreateWindow(L"STATIC", L"Нет подключения",
+        CreateWindow(L"STATIC", L"Нет подключения",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
             20, 210, 150, 25,
             hWnd, (HMENU)ID_STATE_STATIC, hMainInstance, NULL
         );
 
-        HWND hStartBtn = CreateWindow(L"BUTTON", L"Начать стриминг",
+        CreateWindow(L"BUTTON", L"Начать стриминг",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             20, 240, 150, 25,
             hWnd, (HMENU)ID_START_BTN, hMainInstance, NULL);
 
-        HWND hStopBtn = CreateWindow(L"BUTTON", L"Отключить клиента",
+        CreateWindow(L"BUTTON", L"Отключить клиента",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             20, 270, 150, 25,
             hWnd, (HMENU)ID_STOP_BTN, hMainInstance, NULL);
 
-        EnableWindow(hStateStatic, FALSE);
-        EnableWindow(hStartBtn, FALSE);
-        EnableWindow(hStopBtn, FALSE);
+        EnableDlgItem(hWnd, ID_START_BTN, FALSE);
+        EnableDlgItem(hWnd, ID_STOP_BTN, FALSE);
     }
         break;
 
@@ -166,207 +154,117 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         {
         case ID_CREATE_BTN:
         {
+            EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
+
+            // Defines buffers
             WCHAR ip_text[32];
-            GetDlgItemText(hWnd, ID_IP_EDIT, ip_text, 32);
-
             WCHAR port_controls_text[16];
-            GetDlgItemText(hWnd, ID_PORT_CONTROLS_EDIT, port_controls_text, 16);
-
             WCHAR port_image_text[16];
+
+            // Get edit TEXTS
+            GetDlgItemText(hWnd, ID_IP_EDIT, ip_text, 32);
+            GetDlgItemText(hWnd, ID_PORT_CONTROLS_EDIT, port_controls_text, 16);
             GetDlgItemText(hWnd, ID_PORT_IMAGE_EDIT, port_image_text, 16);
 
-            int port_controls_number = _wtoi(port_controls_text);
-            int port_image_number = _wtoi(port_image_text);
+            // Convert port string to int
+            intmax_t port_controls = _wtoi64(port_controls_text);
+            intmax_t port_image = _wtoi64(port_image_text);
+
+            // Variable for my socket error code
+            MySocketError err_code;
             
-            WCHAR error_message[256];
-            if ((port_controls_number <= 0 || port_controls_number > USHRT_MAX) ||
-                (port_image_number <= 0 || port_image_number > USHRT_MAX)
-                ) {
-                wsprintf(error_message, L"Порты %d & %d и/или не валидны. Условие: 0 <= port <= 65535", port_controls_number, port_image_number);
+            // Init controls socket
+            err_code = InitMySocket(&server_controls_socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, ip_text, port_controls);
+            if (MySocketMessageIfError(hWnd, err_code)) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+            
+            // Init videostream socket
+            err_code = InitMySocket(&server_videostream_socket, AF_INET, SOCK_STREAM, IPPROTO_TCP, ip_text, port_image);
+            if (MySocketMessageIfError(hWnd, err_code)) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+            
+            // Set zero memory for clients socket
+            SetZeroMySocket(&client_controls_socket);
+            SetZeroMySocket(&client_videostream_socket);
+
+            // Listening controls socket
+            if (MySocketMessageIfError(hWnd,
+                ListenMySocket(&server_controls_socket, SOMAXCONN))
+            ) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            // Accept client
+            if (MySocketMessageIfError(hWnd,
+                AcceptMySocket(&server_controls_socket, &client_controls_socket))
+            ) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            int recv_size;
+            err_code = RecvMySocket(&client_controls_socket, &client_settings, sizeof(client_settings), &recv_size, 0);
+            if (MySocketMessageIfError(hWnd, err_code))
+            {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            // This app settings
+            ServerSettings server_settings;
+            server_settings.api_version = API_VERSION;
+            server_settings.screen_width = screen_size.width;
+            server_settings.screen_height = screen_size.height;
+
+            if (recv_size == sizeof(client_settings))
+            {
+                server_settings.ok = TRUE;
+            }
+            else {
+                server_settings.ok = FALSE;
+            }
+
+            int send_size;
+            if (MySocketMessageIfError(hWnd, SendMySocket(&client_controls_socket, (LPSTR)&server_settings, sizeof(server_settings), &send_size, 0))) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            if (sizeof(client_settings) != recv_size || (!client_settings.ok))
+            {
+                WCHAR error_message[200];
+                wsprintf(error_message, L"Ошибка при получении данных клиента. Получено: %d, ожидалось: %d байтов. Версия клиента: %d, сервера: %d.", recv_size, (int)sizeof(client_settings), client_settings.api_version, API_VERSION);
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
                 MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
                 return 0;
             }
 
-            struct in_addr server_addr_controls_ip;
-            BOOL iResultIp1 = InetPton(AF_INET, ip_text, &server_addr_controls_ip);
-            struct in_addr server_addr_image_ip;
-            BOOL iResultIp2 = InetPton(AF_INET, ip_text, &server_addr_image_ip);
-
-            if (!(iResultIp1 == 1 && iResultIp2 == 1))
-            {
-                wsprintf(error_message, L"IP-адреса %ws & %ws и/или не валидны. Требуемый формат x.x.x.x , где x: 0 <= x <= 255", ip_text, ip_text);
-            }
-
-            server_socket_controls =    socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            server_socket_image    =    socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-            memset(&server_addr_controls, 0, sizeof(server_addr_controls));
-            memset(&server_addr_image, 0, sizeof(server_addr_image));
-
-            server_addr_controls.sin_family = AF_INET;
-            server_addr_image.sin_family = AF_INET;
-
-            server_addr_controls.sin_addr.s_addr = server_addr_controls_ip.s_addr;
-            server_addr_image.sin_addr.s_addr = server_addr_image_ip.s_addr;
-
-            server_addr_controls.sin_port = htons(port_controls_number);
-            server_addr_image.sin_port = htons(port_image_number);
-
-            HWND hCreateButton = GetDlgItem(hWnd, ID_CREATE_BTN);
-
-            EnableWindow(hCreateButton, FALSE);
-
-            BOOL iResultBindControls = bind(server_socket_controls, (struct sockaddr*)&server_addr_controls, sizeof(server_addr_controls));
-            BOOL iResultBindImage = bind(server_socket_image, (struct sockaddr*)&server_addr_image, sizeof(server_addr_image));
-
-            if (iResultBindControls == SOCKET_ERROR || iResultBindImage == SOCKET_ERROR)
-            {
-                wsprintf(error_message, L"Ошибка, не удалось привязать сокет сервера к адресу: %d", WSAGetLastError());
-                MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                closesocket(server_socket_controls);
-                closesocket(server_socket_image);
-                return 0;
-            }
-
-            BOOL iResultListen = listen(server_socket_controls, SOMAXCONN);
-            if (iResultListen == SOCKET_ERROR)
-            {
-                wsprintf(error_message, L"Не удалось прослушать сокет сервера: %d", WSAGetLastError());
-                MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                closesocket(server_socket_controls);
-                closesocket(server_socket_image);
-                return 0;
-            }
-
-            int clientAddrSize = sizeof(client_addr_controls);
-            while (1)
-            {
-                client_socket_controls = accept(server_socket_controls, (struct sockaddr*)&client_addr_controls, &clientAddrSize);
-
-                if (client_socket_controls == INVALID_SOCKET)
-                {
-                    wsprintf(error_message, L"Ошибка: не удалось принять подключение от клиента: %d", WSAGetLastError());
-                    MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                    return 0;
-                }
-
-                char recvBuf[1024];
-                int recvSize = recv(client_socket_controls, recvBuf, sizeof(recvBuf), 0);
-
-                if (recvSize == sizeof(client_settings))
-                {
-                    memcpy(&client_settings, recvBuf, sizeof(client_settings));
-
-                    ServerSettings server_settings;
-                    server_settings.api_version = API_VERSION;
-                    server_settings.screen_width = screen_size.width;
-                    server_settings.screen_height = screen_size.height;
-
-                    int bufferSize = sizeof(server_settings);
-
-                    int bytesSent = send(client_socket_controls, (char*)&server_settings, bufferSize, NULL);
-                    if (bytesSent == SOCKET_ERROR)
-                    {
-                        wsprintf(error_message, L"Не удалось отправить данные клиенту");
-                        MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                        return 0;
-                    }
-
-                    MessageBox(hWnd, L"Соединение установлено.", L"Успешно", MB_OK);
-
-                    HWND hStartBtn = GetDlgItem(hWnd, ID_START_BTN);
-                    EnableWindow(hStartBtn, TRUE);
-
-                    return 0;
-                }
-                else {
-                    wsprintf(error_message, L"Ошибка: от клиента принято %d байт, но ожидалось %d байт.", recvSize, (int)sizeof(client_settings));
-                    MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                    return 0;
-                }
-            }
-        }
-        break;
-        case ID_START_BTN:
-        {
-            DWORD threadId;
-
-            WCHAR error_message[256];
-
-            HWND hStartBtn = GetDlgItem(hWnd, ID_START_BTN);
-            HWND hStopBtn = GetDlgItem(hWnd, ID_STOP_BTN);
-            EnableWindow(hStartBtn, FALSE);
-            EnableWindow(hStopBtn, TRUE);
-
-
-            BOOL iResultListen = listen(server_socket_image, SOMAXCONN);
-            if (iResultListen == SOCKET_ERROR)
-            {
-                wsprintf(error_message, L"Не удалось прослушать сокет сервера: %d", WSAGetLastError());
-                MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                EnableWindow(hStartBtn, FALSE);
-                return 0;
-            }
-
-            int clientAddrSize = sizeof(client_addr_image);
-            while (1)
-            {
-                client_socket_image = accept(server_socket_image, (struct sockaddr*)&client_addr_image, &clientAddrSize);
-
-                if (client_socket_image == INVALID_SOCKET)
-                {
-                    wsprintf(error_message, L"Ошибка: не удалось принять подключение [видеопоток] от клиента: %d", WSAGetLastError());
-                    MessageBox(hWnd, error_message, L"Ошибка", MB_OK);
-                    return 0;
-                }
-                
-                // Регистрация класса окна
-                WNDCLASS wc = { 0 };
-                wc.lpfnWndProc = SubWndProc; // Установка функции обработки сообщений
-                wc.hInstance = hMainInstance;
-                wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-                wc.lpszClassName = L"MyWindowClass2";
-
-                if (!RegisterClass(&wc)) {
-                    MessageBox(NULL, L"Failed to register window class", L"Error", MB_ICONERROR);
-                    return 1;
-                }
-
-                // Создание окна
-                hChildWindow = CreateWindow(
-                    L"MyWindowClass2", // Имя класса окна
-                    L"MyRemoteControl Server", // Заголовок окна
-                    WS_OVERLAPPEDWINDOW, // Стиль окна
-                    0, 0, // Позиция окна
-                    screen_size.width, screen_size.height, // Размер окна
-                    NULL, // Родительское окно
-                    NULL, // Нет меню
-                    hMainInstance, // Дескриптор приложения
-                    NULL // Дополнительные данные окна
-                );
-
-                if (hChildWindow == NULL) {
-                    MessageBox(NULL, L"Failed to create window", L"Error", MB_ICONERROR);
-                    return 1;
-                }
-
-                // Отображение окна
-                ShowWindow(hChildWindow, SW_MAXIMIZE);
-                UpdateWindow(hChildWindow);
-
-                // Основной цикл обработки сообщений
-                MSG msg;
-                while (GetMessage(&msg, NULL, 0, 0)) {
-                    TranslateMessage(&msg);
-                    DispatchMessage(&msg);
-                }
-
-                return 0;
-            }
+            MessageBox(hWnd, L"Соединение установлено.", L"Подключение клиента", MB_OK);
+            EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
+            EnableDlgItem(hWnd, ID_START_BTN, TRUE);
         }
         break;
         case ID_STOP_BTN:
-            SendMessage(hChildWindow, WM_CLOSE, NULL, NULL);
+            SendMessage(hChildWindow, WM_DESTROY, NULL, NULL);
             break;
         }
     }
@@ -384,10 +282,10 @@ LRESULT SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     switch (msg)
     {
     case WM_CLOSE:
-        closesocket(client_socket_image);
-        closesocket(client_socket_controls);
-        closesocket(server_socket_image);
-        closesocket(server_socket_controls);
+        //closesocket(client_socket_image);
+        //closesocket(client_socket_controls);
+        //closesocket(server_socket_image);
+        //closesocket(server_socket_controls);
         break;
 
     default:
