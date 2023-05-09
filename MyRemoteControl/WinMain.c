@@ -21,6 +21,7 @@ HINSTANCE hMainInstance;
 Size2i screen_size;
 
 ClientSettings client_settings;
+ServerSettings server_settings;
 
 MySocket server_controls_socket, server_videostream_socket, client_controls_socket, client_videostream_socket;
 
@@ -205,6 +206,16 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
+            // Listening videostream socket
+            if (MySocketMessageIfError(hWnd,
+                ListenMySocket(&server_videostream_socket, SOMAXCONN))
+            ) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
             // Accept client
             if (MySocketMessageIfError(hWnd,
                 AcceptMySocket(&server_controls_socket, &client_controls_socket))
@@ -226,7 +237,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             }
 
             // This app settings
-            ServerSettings server_settings;
             server_settings.api_version = API_VERSION;
             server_settings.screen_width = screen_size.width;
             server_settings.screen_height = screen_size.height;
@@ -258,18 +268,38 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
+            // Accept client [videostream]
+            if (MySocketMessageIfError(hWnd,
+                AcceptMySocket(&server_videostream_socket, &client_videostream_socket))
+                ) {
+                CloseMySocket(&server_controls_socket);
+                CloseMySocket(&server_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
             MessageBox(hWnd, L"Соединение установлено.", L"Подключение клиента", MB_OK);
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
             EnableDlgItem(hWnd, ID_START_BTN, TRUE);
+            SetDlgItemText(hWnd, ID_STATE_STATIC, L"Подключение установлено");
         }
         break;
+        case ID_START_BTN:
+        {
+            MySocketError err_code;
+
+           
+
+
+        }
+        break;
+
         case ID_STOP_BTN:
             SendMessage(hChildWindow, WM_DESTROY, NULL, NULL);
             break;
         }
     }
-        break;
-
+    break;
 
     default:
         return DefWindowProc(hWnd, msg, wParam, lParam);

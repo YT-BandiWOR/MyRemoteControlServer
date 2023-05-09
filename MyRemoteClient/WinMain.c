@@ -21,6 +21,7 @@ HINSTANCE hMainInstance;
 Size2i screen_size;
 
 ServerSettings server_settings;
+ClientSettings client_settings;
 
 MySocket server_controls_socket, server_videostream_socket, client_controls_socket, client_videostream_socket;
 
@@ -211,7 +212,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            ClientSettings client_settings;
             client_settings.screen_width = screen_size.width;
             client_settings.screen_height = screen_size.height;
             client_settings.api_version = API_VERSION;
@@ -250,9 +250,21 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
-            MessageBox(hWnd, L"Соединение установлено.", L"Подключение клиента", MB_OK);
+            // Connecting to server [videostream]
+            if (MySocketMessageIfError(hWnd,
+                ConnectMySocket(&server_videostream_socket, &client_videostream_socket)
+            ))
+            {
+                CloseMySocket(&client_controls_socket);
+                CloseMySocket(&client_videostream_socket);
+                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
+                return 0;
+            }
+
+            MessageBox(hWnd, L"Соединение установлено.", L"Подключение к серверу", MB_OK);
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
             EnableDlgItem(hWnd, ID_START_BTN, TRUE);
+            SetDlgItemText(hWnd, ID_STATE_STATIC, L"Подключение установлено");
         }
         break;
         case ID_STOP_BTN:
