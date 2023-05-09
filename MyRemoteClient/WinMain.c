@@ -10,9 +10,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define DEFAULT_IP L"192.168.1.107"
-#define DEFAULT_PORT_CONTROLS "15678"
-#define DEFAULT_PORT_IMAGE "15679"
+#include <types.h>
 
 
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -116,7 +114,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hIpEdit = CreateWindow(L"EDIT", L"127.0.0.1",
+        HWND hIpEdit = CreateWindow(L"EDIT", DEFAULT_IP,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 40, 150, 20,
             hWnd, (HMENU)ID_IP_EDIT, hMainInstance, NULL);
@@ -128,7 +126,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hPortControlsEdit = CreateWindow(L"EDIT", L"15678",
+        HWND hPortControlsEdit = CreateWindow(L"EDIT", DEFAULT_PORT_CONTROLS,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 90, 150, 20,
             hWnd, (HMENU)ID_PORT_CONTROLS_EDIT, hMainInstance, NULL);
@@ -140,7 +138,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             hWnd, NULL, hMainInstance, NULL
         );
 
-        HWND hPortImageEdit = CreateWindow(L"EDIT", L"15679",
+        HWND hPortImageEdit = CreateWindow(L"EDIT", DEFAULT_PORT_IMAGE,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
             20, 150, 150, 20,
             hWnd, (HMENU)ID_PORT_IMAGE_EDIT, hMainInstance, NULL);

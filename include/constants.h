@@ -1,0 +1,7 @@
+#pragma once
+
+#define API_VERSION 1
+
+#define DEFAULT_IP L"192.168.1.107"
+#define DEFAULT_PORT_CONTROLS "15678"
+#define DEFAULT_PORT_IMAGE "15679"
