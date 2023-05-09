@@ -264,7 +264,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             MessageBox(hWnd, L"Соединение установлено.", L"Подключение к серверу", MB_OK);
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
             EnableDlgItem(hWnd, ID_START_BTN, TRUE);
-            SetDlgItemText(hWnd, ID_STATE_STATIC, L"Подключение установлено");
+            SetDlgItemText(hWnd, ID_STATE_STATIC, L"Соединено");
         }
         break;
         case ID_STOP_BTN:
