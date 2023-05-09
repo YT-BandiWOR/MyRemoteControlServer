@@ -4,14 +4,9 @@
 #include <Windows.h>
 #include <stdlib.h>
 #include <limits.h>
-#include "types.h"
-#include "tools.h"
+#include <remotelib.h>
 
 #pragma comment(lib, "ws2_32.lib")
-
-#define DEFAULT_IP L"192.168.1.107"
-#define DEFAULT_PORT_CONTROLS "15678"
-#define DEFAULT_PORT_IMAGE "15679"
 
 
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

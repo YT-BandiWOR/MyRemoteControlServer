@@ -10,7 +10,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#include <types.h>
+#include <remotelib.h>
 
 
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
