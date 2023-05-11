@@ -9,21 +9,44 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-
+// Window wnd procedurs
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-DWORD WINAPI StartNewWindow(LPVOID lParam);
 
-HANDLE newWindowHandleThread;
+// Thread workers
+DWORD WINAPI RecvVideostream();
+
+// Windows Descriptors
+HWND hMainWindow;
 HWND hChildWindow;
 
+// App instance
 HINSTANCE hMainInstance;
+
+// This device screen size
 Size2i screen_size;
 
+// Client & server settings
 ClientSettings client_settings;
 ServerSettings server_settings;
 
+// Sockets
 MySocket server_controls_socket, server_videostream_socket, client_controls_socket, client_videostream_socket;
+
+// Input VideoStream params & data
+Size2i videostream_size;
+int bits_per_pixel;
+int video_data_size;
+BYTE* video_data_recv_buffer = { 0 };
+BYTE* video_data = { 0 };
+BITMAPINFOHEADER videostream_header = { 0 };
+BITMAPINFO bmi_video = { 0 };
+
+// Threads
+HANDLE recv_video_thread = { 0 };
+HANDLE draw_video_thread = { 0 };
+
+CRITICAL_SECTION g_videodata_cs = { 0 };
 
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
@@ -48,17 +71,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     }
 
 
-    HWND hMainWnd = CreateServerMainWindow(0, 0, 220, 400);
+    hMainWindow = CreateServerMainWindow(0, 0, 220, 400);
 
-    if (hMainWnd == NULL)
+    if (hMainWindow == NULL)
     {
         MessageBox(NULL, L"Failed to create window", L"Error", MB_ICONERROR);
         return 1;
     }
 
     // Отображение окна
-    ShowWindow(hMainWnd, nCmdShow);
-    UpdateWindow(hMainWnd);
+    ShowWindow(hMainWindow, nCmdShow);
+    UpdateWindow(hMainWindow);
 
     // Основной цикл обработки сообщений
     MSG msg;
@@ -260,7 +283,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (sizeof(client_settings) != recv_size || (!client_settings.ok))
             {
                 WCHAR error_message[200];
-                wsprintf(error_message, L"Ошибка при получении данных клиента. Получено: %d, ожидалось: %d байтов. Версия клиента: %d, сервера: %d.", recv_size, (int)sizeof(client_settings), client_settings.api_version, API_VERSION);
+                wsprintf(error_message, L"Ошибка при получении данных клиента. Получено: %d, ожидалось: %d байтов. Версия клиента: %d, сервера: %d. Ok: %d", recv_size, (int)sizeof(client_settings), client_settings.api_version, server_settings.api_version);
                 CloseMySocket(&server_controls_socket);
                 CloseMySocket(&server_videostream_socket);
                 EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
@@ -276,6 +299,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 CloseMySocket(&server_videostream_socket);
                 EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
                 return 0;
+                
             }
 
             EnableDlgItem(hWnd, ID_CREATE_BTN, FALSE);
@@ -285,34 +309,21 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         break;
         case ID_START_BTN:
         {
-            int buffer_size;
-            int recvid;
+            EnableDlgItem(hWnd, ID_START_BTN, FALSE);
+            EnableDlgItem(hWnd, ID_STOP_BTN, TRUE);
 
-            if (MySocketMessageIfError(hWnd, 
-                    RecvMySocket(&client_videostream_socket, &buffer_size, sizeof(buffer_size), &recvid, 0)
-                ))
-            {
-                CloseMySocket(&server_controls_socket);
-                CloseMySocket(&server_videostream_socket);
-                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
-                return 0;
+            hChildWindow = CreateServerStreamWindow(0, 0, screen_size.width, screen_size.height);
+
+            ShowWindow(hChildWindow, SW_MAXIMIZE);
+            UpdateWindow(hChildWindow);
+
+            // Основной цикл обработки сообщений
+            MSG msg;
+            while (GetMessage(&msg, NULL, 0, 0)) {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
             }
 
-            BYTE* buffer = (BYTE*)malloc(buffer_size);
-
-            if (MySocketMessageIfError(hWnd,
-                    RecvMySocketPartial(&client_videostream_socket, buffer, buffer_size, 0)
-                ))
-            {
-                free(buffer);
-                CloseMySocket(&server_controls_socket);
-                CloseMySocket(&server_videostream_socket);
-                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
-                return 0;
-            }
-
-            MessageBox(hWnd, L"получено", L"", 0);
-            free(buffer);
             return 0;
         }
         break;
@@ -334,11 +345,56 @@ LRESULT SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
-    case WM_CLOSE:
-        //closesocket(client_socket_image);
-        //closesocket(client_socket_controls);
-        //closesocket(server_socket_image);
-        //closesocket(server_socket_controls);
+    case WM_CREATE:
+    {
+        InitializeCriticalSection(&g_videodata_cs);
+
+        videostream_size.width = client_settings.screen_width;
+        videostream_size.height = client_settings.screen_height;
+        bits_per_pixel = client_settings.bitsPerPixel;
+
+        video_data_size = videostream_size.width * videostream_size.height * bits_per_pixel / 8;
+        video_data = (BYTE*)malloc(video_data_size);
+        video_data_recv_buffer = (BYTE*)malloc(video_data_size);
+
+
+        if (!(video_data || video_data_recv_buffer))
+        {
+            MessageBox(hWnd, L"Ошибка при выделении памяти.", L"Ошибка", MB_OK);
+            return 0;
+        }
+
+        bmi_video.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi_video.bmiHeader.biWidth = videostream_size.width;
+        bmi_video.bmiHeader.biHeight = -videostream_size.height;
+        bmi_video.bmiHeader.biPlanes = 1;
+        bmi_video.bmiHeader.biBitCount = bits_per_pixel;
+        bmi_video.bmiHeader.biCompression = BI_RGB;
+
+        recv_video_thread = CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)RecvVideostream, NULL, NULL, NULL);
+    }
+        break;
+
+    case WM_PAINT:
+    {
+        HDC hdc = GetDC(hWnd);
+
+        EnterCriticalSection(&g_videodata_cs);
+
+        HBITMAP hBitMap = CreateDIBitmap(hdc, &bmi_video.bmiHeader, CBM_INIT, video_data, &bmi_video, DIB_RGB_COLORS);
+        HDC hdcMem = CreateCompatibleDC(hdc);
+        HBITMAP hBitmapOld = (HBITMAP)SelectObject(hdcMem, hBitMap);
+
+        BitBlt(hdc, 0, 0, videostream_size.width, videostream_size.height, hdcMem, 0, 0, SRCCOPY);
+        
+        LeaveCriticalSection(&g_videodata_cs);
+
+        SelectObject(hdcMem, hBitmapOld);
+        DeleteDC(hdcMem);
+        DeleteObject(hBitMap);
+
+        ReleaseDC(hWnd, hdc);
+    }
         break;
 
     default:
@@ -348,6 +404,43 @@ LRESULT SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-DWORD WINAPI StartNewWindow(LPVOID lParam) {
-    
+DWORD WINAPI RecvVideostream() {
+    while (TRUE)
+    {
+        if (MySocketMessageIfError(hChildWindow,
+            RecvMySocketPartial(&client_videostream_socket, video_data_recv_buffer, video_data_size, 0)
+        ))
+        {
+            free(video_data);
+            free(video_data_recv_buffer);
+            CloseMySocket(&server_controls_socket);
+            CloseMySocket(&server_videostream_socket);
+            ExitThread(0);
+        }
+
+        // Блокирование потока для копирования в глобальные данные
+        EnterCriticalSection(&g_videodata_cs);
+
+        memcpy(video_data, video_data_recv_buffer, video_data_size);
+        
+        LeaveCriticalSection(&g_videodata_cs);
+
+        InvalidateRect(hChildWindow, NULL, FALSE);
+
+        BOOL response_ok = 1;
+
+        int sent_size;
+        if (MySocketMessageIfError(hChildWindow,
+                SendMySocket(&client_videostream_socket, &response_ok, sizeof(response_ok), &sent_size, 0)
+            ))
+        {
+            free(video_data);
+            free(video_data_recv_buffer);
+            CloseMySocket(&server_controls_socket);
+            CloseMySocket(&server_videostream_socket);
+            ExitThread(0);
+        }
+    }
+
+    return 0;
 }

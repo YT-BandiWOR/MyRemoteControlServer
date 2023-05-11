@@ -12,9 +12,10 @@
 
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-DWORD WINAPI StartNewWindow(LPVOID lParam);
+DWORD WINAPI SendVideoStream();
 
 HANDLE newWindowHandleThread;
+HWND hMainWnd;
 HWND hChildWindow;
 
 HINSTANCE hMainInstance;
@@ -24,6 +25,9 @@ ServerSettings server_settings;
 ClientSettings client_settings;
 
 MySocket server_controls_socket, server_videostream_socket, client_controls_socket, client_videostream_socket;
+
+
+HANDLE send_video_thread;
 
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
@@ -41,7 +45,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         return 1;
     }
 
-    HWND hMainWnd = CreateClientMainWindow(0, 0, 220, 400);
+    hMainWnd = CreateClientMainWindow(0, 0, 220, 400);
 
     if (hMainWnd == NULL)
     {
@@ -212,10 +216,20 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 return 0;
             }
 
+            HDC hdcScreen = GetDC(HWND_DESKTOP);
+            HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, screen_size.width, screen_size.height);
+            HDC hdcMemDC = CreateCompatibleDC(hdcScreen);
+            HBITMAP hOldBitmap = SelectObject(hdcMemDC, hBitmap);
+            BITMAP bmp;
+            GetObject(hBitmap, sizeof(BITMAP), &bmp);
+            int bit_per_pixel = bmp.bmBitsPixel;
+            SelectObject(hdcMemDC, hOldBitmap);
+
             client_settings.screen_width = screen_size.width;
             client_settings.screen_height = screen_size.height;
             client_settings.api_version = API_VERSION;
             client_settings.ok = TRUE;
+            client_settings.bitsPerPixel = bmp.bmBitsPixel;
 
             int send_size;
             if (MySocketMessageIfError(hWnd,
@@ -242,7 +256,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (recv_size != sizeof(server_settings) || server_settings.api_version != client_settings.api_version || !(server_settings.ok))
             {
                 WCHAR error_message[200];
-                wsprintf(error_message, L"Ошибка при получении данных сервера. Получено: %d, ожидалось: %d байтов. Версия клиента: %d, сервера: %d.", recv_size, (int)sizeof(server_settings), client_settings.api_version, server_settings.api_version);
+                wsprintf(error_message, L"Ошибка при получении данных сервера. Получено: %d, ожидалось: %d байтов. Версия клиента: %d, сервера: %d. Ok: %d", recv_size, (int)sizeof(server_settings), client_settings.api_version, server_settings.api_version, server_settings.ok);
                 CloseMySocket(&client_controls_socket);
                 CloseMySocket(&client_videostream_socket);
                 EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
@@ -268,54 +282,9 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         break;
         case ID_START_BTN:
         {
-            //ShowWindowAsync(hWnd, SW_MINIMIZE);
-            
-            HDC hdcScreen = GetDC(HWND_DESKTOP);
-            HDC hdcMemDC = CreateCompatibleDC(hdcScreen);
-            HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, screen_size.width, screen_size.height);
+            ShowWindowAsync(hWnd, SW_MINIMIZE);
 
-            SelectObject(hdcMemDC, hBitmap);
-
-            BitBlt(hdcMemDC, 0, 0, screen_size.width, screen_size.height, hdcScreen, 0, 0, SRCCOPY);
-
-            BITMAP bmp;
-            GetObject(hBitmap, sizeof(BITMAP), &bmp);
-
-            int imageSize = bmp.bmWidth * bmp.bmHeight * bmp.bmBitsPixel / 8;
-
-            BYTE* imageData = (BYTE*) malloc(imageSize);
-            if (imageData == 0)
-                return 0;
-
-            GetBitmapBits(hBitmap, imageSize, imageData);
-
-            int bytes_sent = 0;
-
-            int sended_size_size;
-            if (MySocketMessageIfError(hWnd,
-                    SendMySocket(&client_videostream_socket, &imageSize, sizeof(imageSize), &sended_size_size, 0)
-                ))
-            {
-                CloseMySocket(&client_controls_socket);
-                CloseMySocket(&client_videostream_socket);
-                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
-                free(imageData);
-                return 0;
-            }
-
-            if (MySocketMessageIfError(hWnd, 
-                    SendMySocketPartial(&client_videostream_socket, imageData, imageSize, 0)
-                ))
-            {
-                free(imageData);
-                CloseMySocket(&client_controls_socket);
-                CloseMySocket(&client_videostream_socket);
-                EnableDlgItem(hWnd, ID_CREATE_BTN, TRUE);
-                return 0;
-            }
-
-            MessageBox(hWnd, L"отправлено", L"", 0);
-            free(imageData);
+            send_video_thread = CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)SendVideoStream, NULL, NULL, NULL);
             return 0;
         }
         break;
@@ -330,19 +299,65 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-LRESULT SubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    switch (msg)
-    {
-    
+DWORD WINAPI SendVideoStream() {
+    HDC hdcScreen = GetDC(HWND_DESKTOP);
+    HDC hdcMemDC = CreateCompatibleDC(hdcScreen);
+    HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, screen_size.width, screen_size.height);
+    HBITMAP hBitmapOld = (HBITMAP)SelectObject(hdcMemDC, hBitmap);
 
-    default:
-        return DefWindowProc(hWnd, msg, wParam, lParam);
+    BitBlt(hdcMemDC, 0, 0, screen_size.width, screen_size.height, hdcScreen, 0, 0, SRCCOPY);
+
+    BITMAP bmp;
+    GetObject(hBitmap, sizeof(BITMAP), &bmp);
+
+    int imageSize = bmp.bmWidth * bmp.bmHeight * bmp.bmBitsPixel / 8;
+
+    BYTE* imageData = (BYTE*)malloc(imageSize);
+    if (imageData == 0)
+    {
+        ExitProcess(0);
     }
 
-    return 0;
+    GetBitmapBits(hBitmap, imageSize, imageData);
+
+    while (TRUE)
+    {
+        if (MySocketMessageIfError(hMainWnd,
+            SendMySocketPartial(&client_videostream_socket, imageData, imageSize, 0)
+        ))
+        {
+            free(imageData);
+            CloseMySocket(&client_controls_socket);
+            CloseMySocket(&client_videostream_socket);
+            EnableDlgItem(hMainWnd, ID_CREATE_BTN, TRUE);
+            ExitProcess(0);
+        }
+
+        int server_result;
+        int recv_size;
+        MySocketError err_code = RecvMySocket(&client_videostream_socket, &server_result, sizeof(server_result), &recv_size, 0);
+
+        if (err_code != MYSOCKER_OK || server_result != 1)
+        {
+            WCHAR message_error[512];
+
+            if (err_code != MYSOCKER_OK)
+                GetMySocketErrorMessage(err_code, message_error);
+            else
+                wsprintf(message_error, L"Клиент прислал код, не равный 1: %d", server_result);
+            
+            MessageBox(hMainWnd, message_error, L"Ошибка", MB_OK);
+            free(imageData);
+            CloseMySocket(&client_controls_socket);
+            CloseMySocket(&client_videostream_socket);
+            EnableDlgItem(hMainWnd, ID_CREATE_BTN, TRUE);
+            ExitProcess(0);
+        }
+    }
+
+    ReleaseDC(hMainWnd, hdcScreen);
+    free(imageData);
+
+    ExitProcess(0);
 }
 
-DWORD WINAPI StartNewWindow(LPVOID lParam) {
-
-}

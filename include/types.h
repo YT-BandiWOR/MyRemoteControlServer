@@ -15,6 +15,7 @@ typedef struct {
     int screen_width;
     int screen_height;
     int api_version;
+    int bitsPerPixel;
     BOOLEAN ok;
 
 } ClientSettings;
